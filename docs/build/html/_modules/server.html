@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>server &#8212; UDP Chat Application 0.1 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=27fed22d" />
+    <script src="../_static/documentation_options.js?v=2709fde1"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for server</h1><div class="highlight"><pre>
+<span></span><span class="c1"># ==========================================================</span>
+<span class="c1"># Secure UDP Chat Server</span>
+<span class="c1"># COMPE 560 – Graduate-Level Project</span>
+<span class="c1"># Author: Kashmira Chavan</span>
+<span class="c1"># Description:</span>
+<span class="c1"># - Receives RSA public keys from clients</span>
+<span class="c1"># - Sends AES key encrypted with RSA</span>
+<span class="c1"># - Rebroadcasts AES-encrypted messages to other clients</span>
+<span class="c1"># ==========================================================</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">socket</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">base64</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">crypto_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">generate_aes_key</span><span class="p">,</span> <span class="n">encrypt_with_rsa</span>
+
+<span class="c1"># Dictionary to store client addresses and AES key</span>
+<span class="n">clients</span> <span class="o">=</span> <span class="p">{}</span>            <span class="c1"># { addr: aes_key }</span>
+<span class="n">rsa_keys</span> <span class="o">=</span> <span class="p">{}</span>           <span class="c1"># { addr: rsa_pub_key }</span>
+<span class="n">seen_clients</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>    <span class="c1"># To prevent rebroadcasting username</span>
+
+<span class="c1"># Shared AES key used for all clients (simplified for project scope)</span>
+<span class="n">shared_aes_key</span> <span class="o">=</span> <span class="n">generate_aes_key</span><span class="p">()</span>
+
+<span class="c1"># ==========================================================</span>
+<span class="c1"># Function: handle_messages</span>
+<span class="c1"># Purpose: Handles incoming UDP messages from clients.</span>
+<span class="c1"># - If it&#39;s a new client, perform RSA-AES key exchange</span>
+<span class="c1"># - If it&#39;s a known client, rebroadcast message to others</span>
+<span class="c1"># ==========================================================</span>
+<div class="viewcode-block" id="log_event">
+<a class="viewcode-back" href="../modules.html#server.log_event">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">log_event</span><span class="p">(</span><span class="n">entry</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Log a chat event to file.&quot;&quot;&quot;</span>
+    <span class="o">...</span></div>
+
+
+<div class="viewcode-block" id="handle_messages">
+<a class="viewcode-back" href="../modules.html#server.handle_messages">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">handle_messages</span><span class="p">(</span><span class="n">sock</span><span class="p">):</span>
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">data</span><span class="p">,</span> <span class="n">addr</span> <span class="o">=</span> <span class="n">sock</span><span class="o">.</span><span class="n">recvfrom</span><span class="p">(</span><span class="mi">4096</span><span class="p">)</span>
+
+        <span class="c1"># Case 1: Existing client sending message</span>
+        <span class="k">if</span> <span class="n">addr</span> <span class="ow">in</span> <span class="n">clients</span><span class="p">:</span>
+
+            <span class="c1"># If this is their first message (likely username), skip rebroadcast</span>
+            <span class="k">if</span> <span class="n">addr</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">seen_clients</span><span class="p">:</span>
+                <span class="n">seen_clients</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">addr</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[Server] Received username from </span><span class="si">{</span><span class="n">addr</span><span class="si">}</span><span class="s2"> (not broadcasted)&quot;</span><span class="p">)</span>
+                <span class="k">continue</span>
+
+            <span class="c1"># Rebroadcast to all other clients</span>
+            <span class="k">for</span> <span class="n">client_addr</span> <span class="ow">in</span> <span class="n">clients</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">client_addr</span> <span class="o">!=</span> <span class="n">addr</span><span class="p">:</span>
+                    <span class="n">sock</span><span class="o">.</span><span class="n">sendto</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">client_addr</span><span class="p">)</span>
+
+        <span class="c1"># Case 2: New client sending RSA public key</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="c1"># Step 1: Decode RSA public key</span>
+                <span class="n">rsa_pub</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64decode</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+                <span class="c1"># Step 2: Encrypt AES key with public key and send it back</span>
+                <span class="n">encrypted_key</span> <span class="o">=</span> <span class="n">encrypt_with_rsa</span><span class="p">(</span><span class="n">rsa_pub</span><span class="p">,</span> <span class="n">shared_aes_key</span><span class="p">)</span>
+                <span class="n">sock</span><span class="o">.</span><span class="n">sendto</span><span class="p">(</span><span class="n">base64</span><span class="o">.</span><span class="n">b64encode</span><span class="p">(</span><span class="n">encrypted_key</span><span class="p">),</span> <span class="n">addr</span><span class="p">)</span>
+
+                <span class="c1"># Step 3: Save client&#39;s AES key and public key</span>
+                <span class="n">clients</span><span class="p">[</span><span class="n">addr</span><span class="p">]</span> <span class="o">=</span> <span class="n">shared_aes_key</span>
+                <span class="n">rsa_keys</span><span class="p">[</span><span class="n">addr</span><span class="p">]</span> <span class="o">=</span> <span class="n">rsa_pub</span>
+
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[Server] RSA public key received from </span><span class="si">{</span><span class="n">addr</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[Server] Encrypted AES key sent to </span><span class="si">{</span><span class="n">addr</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[Server] Error during key exchange with </span><span class="si">{</span><span class="n">addr</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+<span class="c1"># ==========================================================</span>
+<span class="c1"># Function: main</span>
+<span class="c1"># Purpose: Initializes UDP socket and starts message handler</span>
+<span class="c1"># ==========================================================</span>
+<div class="viewcode-block" id="main">
+<a class="viewcode-back" href="../modules.html#server.main">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">main</span><span class="p">():</span>
+    <span class="n">sock</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_DGRAM</span><span class="p">)</span>
+    <span class="n">sock</span><span class="o">.</span><span class="n">bind</span><span class="p">((</span><span class="s2">&quot;0.0.0.0&quot;</span><span class="p">,</span> <span class="mi">12345</span><span class="p">))</span>  <span class="c1"># Listen on all interfaces</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[Server] Server started on 0.0.0.0:12345</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">handle_messages</span><span class="p">(</span><span class="n">sock</span><span class="p">)</span></div>
+
+
+<span class="c1"># Entry point</span>
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">UDP Chat Application</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../modules.html">Modules</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, Kashmira.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

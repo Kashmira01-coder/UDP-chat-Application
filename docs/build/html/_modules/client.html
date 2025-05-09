@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>client &#8212; UDP Chat Application 0.1 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=27fed22d" />
+    <script src="../_static/documentation_options.js?v=2709fde1"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for client</h1><div class="highlight"><pre>
+<span></span><span class="c1"># ==========================================================</span>
+<span class="c1"># Secure UDP Chat Client (GUI-based)</span>
+<span class="c1"># COMPE 560 – Graduate-Level Project by Kashmira Chavan</span>
+<span class="c1"># Features: RSA-AES hybrid encryption, HMAC, ACKs, retransmission</span>
+<span class="c1"># GUI built using Tkinter</span>
+<span class="c1"># ==========================================================</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">socket</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">threading</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">base64</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">tkinter</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">tk</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tkinter</span><span class="w"> </span><span class="kn">import</span> <span class="n">simpledialog</span><span class="p">,</span> <span class="n">messagebox</span><span class="p">,</span> <span class="n">scrolledtext</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">crypto_utils</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">generate_rsa_keypair</span><span class="p">,</span> <span class="n">decrypt_with_rsa</span><span class="p">,</span>
+    <span class="n">encrypt_with_aes</span><span class="p">,</span> <span class="n">decrypt_with_aes</span><span class="p">,</span>
+    <span class="n">create_hmac</span><span class="p">,</span> <span class="n">verify_hmac</span>
+<span class="p">)</span>
+
+<span class="c1"># === Global Variables ===</span>
+<span class="n">aes_key</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="n">username</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="n">server_addr</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;localhost&quot;</span><span class="p">,</span> <span class="mi">12345</span><span class="p">)</span>
+<span class="n">pending_acks</span> <span class="o">=</span> <span class="p">{}</span>
+<span class="n">msg_counter</span> <span class="o">=</span> <span class="mi">0</span>
+<span class="n">received_ids</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+<span class="n">log_file</span> <span class="o">=</span> <span class="s2">&quot;chat_log.txt&quot;</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">client.py - Secure UDP Chat Client</span>
+
+<span class="sd">Handles message sending, GUI, encryption, and retransmission.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">log_event</span><span class="p">(</span><span class="n">entry</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Log a chat event to file.&quot;&quot;&quot;</span>
+    <span class="o">...</span>
+
+<span class="c1"># === Logging ===</span>
+<div class="viewcode-block" id="log_event">
+<a class="viewcode-back" href="../modules.html#client.log_event">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">log_event</span><span class="p">(</span><span class="n">entry</span><span class="p">):</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">log_file</span><span class="p">,</span> <span class="s2">&quot;a&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">time</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s1">&#39;%H:%M:%S&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2"> - </span><span class="si">{</span><span class="n">entry</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+<span class="c1"># === Display Output ===</span>
+<div class="viewcode-block" id="output">
+<a class="viewcode-back" href="../modules.html#client.output">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">output</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="n">gui</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">gui</span><span class="p">:</span>
+        <span class="n">gui</span><span class="o">.</span><span class="n">display</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span></div>
+
+
+<span class="c1"># === Message Receiver Thread ===</span>
+<div class="viewcode-block" id="receive_messages">
+<a class="viewcode-back" href="../modules.html#client.receive_messages">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">receive_messages</span><span class="p">(</span><span class="n">sock</span><span class="p">,</span> <span class="n">private_key</span><span class="p">,</span> <span class="n">gui</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">global</span> <span class="n">aes_key</span>
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">data</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">sock</span><span class="o">.</span><span class="n">recvfrom</span><span class="p">(</span><span class="mi">4096</span><span class="p">)</span>
+            <span class="n">decoded</span> <span class="o">=</span> <span class="n">base64</span><span class="o">.</span><span class="n">b64decode</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+            <span class="c1"># Step 1: Handle ACKs</span>
+            <span class="k">if</span> <span class="n">decoded</span><span class="o">.</span><span class="n">startswith</span><span class="p">(</span><span class="sa">b</span><span class="s2">&quot;ACK:&quot;</span><span class="p">):</span>
+                <span class="n">ack_id</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">decoded</span><span class="p">[</span><span class="mi">4</span><span class="p">:]</span><span class="o">.</span><span class="n">decode</span><span class="p">())</span>
+                <span class="k">if</span> <span class="n">ack_id</span> <span class="ow">in</span> <span class="n">pending_acks</span><span class="p">:</span>
+                    <span class="k">del</span> <span class="n">pending_acks</span><span class="p">[</span><span class="n">ack_id</span><span class="p">]</span>
+                    <span class="n">log_event</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;ACK received for msg_id </span><span class="si">{</span><span class="n">ack_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">continue</span>
+
+            <span class="c1"># Step 2: Handle AES Key Exchange</span>
+            <span class="k">if</span> <span class="n">aes_key</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">aes_key</span> <span class="o">=</span> <span class="n">decrypt_with_rsa</span><span class="p">(</span><span class="n">private_key</span><span class="p">,</span> <span class="n">decoded</span><span class="p">)</span>
+                <span class="n">output</span><span class="p">(</span><span class="s2">&quot;[System] AES key received and decrypted.&quot;</span><span class="p">,</span> <span class="n">gui</span><span class="p">)</span>
+                <span class="n">log_event</span><span class="p">(</span><span class="s2">&quot;AES key securely received&quot;</span><span class="p">)</span>
+
+                <span class="n">encrypted</span> <span class="o">=</span> <span class="n">encrypt_with_aes</span><span class="p">(</span><span class="n">aes_key</span><span class="p">,</span> <span class="n">username</span><span class="p">)</span>
+                <span class="n">mac</span> <span class="o">=</span> <span class="n">create_hmac</span><span class="p">(</span><span class="n">aes_key</span><span class="p">,</span> <span class="n">encrypted</span><span class="p">)</span>
+                <span class="n">sock</span><span class="o">.</span><span class="n">sendto</span><span class="p">(</span><span class="n">base64</span><span class="o">.</span><span class="n">b64encode</span><span class="p">(</span><span class="n">mac</span> <span class="o">+</span> <span class="n">encrypted</span><span class="p">),</span> <span class="n">server_addr</span><span class="p">)</span>
+                <span class="k">continue</span>
+
+            <span class="c1"># Step 3: Validate and parse incoming message</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">decoded</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">36</span><span class="p">:</span>
+                <span class="k">continue</span>
+
+            <span class="n">msg_id</span> <span class="o">=</span> <span class="nb">int</span><span class="o">.</span><span class="n">from_bytes</span><span class="p">(</span><span class="n">decoded</span><span class="p">[:</span><span class="mi">4</span><span class="p">],</span> <span class="s2">&quot;big&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">msg_id</span> <span class="ow">in</span> <span class="n">received_ids</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">received_ids</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">msg_id</span><span class="p">)</span>
+
+            <span class="n">mac</span> <span class="o">=</span> <span class="n">decoded</span><span class="p">[</span><span class="mi">4</span><span class="p">:</span><span class="mi">36</span><span class="p">]</span>
+            <span class="n">encrypted_msg</span> <span class="o">=</span> <span class="n">decoded</span><span class="p">[</span><span class="mi">36</span><span class="p">:]</span>
+
+            <span class="c1"># Step 4: Verify and decrypt message</span>
+            <span class="k">if</span> <span class="n">verify_hmac</span><span class="p">(</span><span class="n">aes_key</span><span class="p">,</span> <span class="n">encrypted_msg</span><span class="p">,</span> <span class="n">mac</span><span class="p">):</span>
+                <span class="n">message</span> <span class="o">=</span> <span class="n">decrypt_with_aes</span><span class="p">(</span><span class="n">aes_key</span><span class="p">,</span> <span class="n">encrypted_msg</span><span class="p">)</span>
+                <span class="n">output</span><span class="p">(</span><span class="n">message</span><span class="p">,</span> <span class="n">gui</span><span class="p">)</span>
+                <span class="n">sock</span><span class="o">.</span><span class="n">sendto</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;ACK:</span><span class="si">{</span><span class="n">msg_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">encode</span><span class="p">(),</span> <span class="n">server_addr</span><span class="p">)</span>
+                <span class="n">log_event</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Received msg_id </span><span class="si">{</span><span class="n">msg_id</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">message</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">output</span><span class="p">(</span><span class="s2">&quot;[Warning] Message verification failed.&quot;</span><span class="p">,</span> <span class="n">gui</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="k">continue</span></div>
+
+
+<span class="c1"># === Retransmit Unacknowledged Messages ===</span>
+<div class="viewcode-block" id="retransmit_thread">
+<a class="viewcode-back" href="../modules.html#client.retransmit_thread">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">retransmit_thread</span><span class="p">(</span><span class="n">sock</span><span class="p">):</span>
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">msg_id</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="n">pending_acks</span><span class="o">.</span><span class="n">keys</span><span class="p">()):</span>
+            <span class="n">timestamp</span><span class="p">,</span> <span class="n">msg</span> <span class="o">=</span> <span class="n">pending_acks</span><span class="p">[</span><span class="n">msg_id</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">timestamp</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="n">sock</span><span class="o">.</span><span class="n">sendto</span><span class="p">(</span><span class="n">base64</span><span class="o">.</span><span class="n">b64encode</span><span class="p">(</span><span class="n">msg</span><span class="p">),</span> <span class="n">server_addr</span><span class="p">)</span>
+                <span class="n">pending_acks</span><span class="p">[</span><span class="n">msg_id</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">(),</span> <span class="n">msg</span><span class="p">)</span>
+                <span class="n">log_event</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Retransmitted msg_id </span><span class="si">{</span><span class="n">msg_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+<span class="c1"># === Send Encrypted Message ===</span>
+<div class="viewcode-block" id="send_message">
+<a class="viewcode-back" href="../modules.html#client.send_message">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">send_message</span><span class="p">(</span><span class="n">sock</span><span class="p">,</span> <span class="n">text</span><span class="p">,</span> <span class="n">gui</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="k">global</span> <span class="n">msg_counter</span>
+    <span class="k">if</span> <span class="n">aes_key</span><span class="p">:</span>
+        <span class="n">full_msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">username</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">text</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="n">encrypted</span> <span class="o">=</span> <span class="n">encrypt_with_aes</span><span class="p">(</span><span class="n">aes_key</span><span class="p">,</span> <span class="n">full_msg</span><span class="p">)</span>
+        <span class="n">mac</span> <span class="o">=</span> <span class="n">create_hmac</span><span class="p">(</span><span class="n">aes_key</span><span class="p">,</span> <span class="n">encrypted</span><span class="p">)</span>
+        <span class="n">msg_id_bytes</span> <span class="o">=</span> <span class="n">msg_counter</span><span class="o">.</span><span class="n">to_bytes</span><span class="p">(</span><span class="mi">4</span><span class="p">,</span> <span class="s2">&quot;big&quot;</span><span class="p">)</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="n">msg_id_bytes</span> <span class="o">+</span> <span class="n">mac</span> <span class="o">+</span> <span class="n">encrypted</span>
+
+        <span class="n">sock</span><span class="o">.</span><span class="n">sendto</span><span class="p">(</span><span class="n">base64</span><span class="o">.</span><span class="n">b64encode</span><span class="p">(</span><span class="n">msg</span><span class="p">),</span> <span class="n">server_addr</span><span class="p">)</span>
+        <span class="n">pending_acks</span><span class="p">[</span><span class="n">msg_counter</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">(),</span> <span class="n">msg</span><span class="p">)</span>
+        <span class="n">log_event</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Sent msg_id </span><span class="si">{</span><span class="n">msg_counter</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">full_msg</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">msg_counter</span> <span class="o">+=</span> <span class="mi">1</span>
+
+        <span class="k">if</span> <span class="n">gui</span><span class="p">:</span>
+            <span class="n">gui</span><span class="o">.</span><span class="n">clear_entry</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">output</span><span class="p">(</span><span class="s2">&quot;[System] Still waiting for AES key...&quot;</span><span class="p">,</span> <span class="n">gui</span><span class="p">)</span></div>
+
+
+<span class="c1"># === Tkinter GUI Class ===</span>
+<div class="viewcode-block" id="ChatGUI">
+<a class="viewcode-back" href="../modules.html#client.ChatGUI">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ChatGUI</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sock</span><span class="p">,</span> <span class="n">private_key</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sock</span> <span class="o">=</span> <span class="n">sock</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">private_key</span> <span class="o">=</span> <span class="n">private_key</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">root</span> <span class="o">=</span> <span class="n">tk</span><span class="o">.</span><span class="n">Tk</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">root</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s2">&quot;Secure UDP Chat&quot;</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">chat_area</span> <span class="o">=</span> <span class="n">scrolledtext</span><span class="o">.</span><span class="n">ScrolledText</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">root</span><span class="p">,</span> <span class="n">wrap</span><span class="o">=</span><span class="n">tk</span><span class="o">.</span><span class="n">WORD</span><span class="p">,</span> <span class="n">state</span><span class="o">=</span><span class="s1">&#39;disabled&#39;</span><span class="p">,</span> <span class="n">height</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">60</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">chat_area</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="n">padx</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">pady</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">entry_field</span> <span class="o">=</span> <span class="n">tk</span><span class="o">.</span><span class="n">Entry</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">root</span><span class="p">,</span> <span class="n">width</span><span class="o">=</span><span class="mi">50</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">entry_field</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="n">side</span><span class="o">=</span><span class="n">tk</span><span class="o">.</span><span class="n">LEFT</span><span class="p">,</span> <span class="n">padx</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">pady</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">entry_field</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="s2">&quot;&lt;Return&gt;&quot;</span><span class="p">,</span> <span class="k">lambda</span> <span class="n">event</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">send</span><span class="p">())</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">send_button</span> <span class="o">=</span> <span class="n">tk</span><span class="o">.</span><span class="n">Button</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">root</span><span class="p">,</span> <span class="n">text</span><span class="o">=</span><span class="s2">&quot;Send&quot;</span><span class="p">,</span> <span class="n">command</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">send</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">send_button</span><span class="o">.</span><span class="n">pack</span><span class="p">(</span><span class="n">side</span><span class="o">=</span><span class="n">tk</span><span class="o">.</span><span class="n">RIGHT</span><span class="p">,</span> <span class="n">padx</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">display</span><span class="p">(</span><span class="s2">&quot;[System] Waiting for AES key...&quot;</span><span class="p">)</span>
+
+        <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">receive_messages</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">private_key</span><span class="p">,</span> <span class="bp">self</span><span class="p">),</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+        <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">retransmit_thread</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="p">,),</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">root</span><span class="o">.</span><span class="n">protocol</span><span class="p">(</span><span class="s2">&quot;WM_DELETE_WINDOW&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">root</span><span class="o">.</span><span class="n">destroy</span><span class="p">)</span>
+
+<div class="viewcode-block" id="ChatGUI.display">
+<a class="viewcode-back" href="../modules.html#client.ChatGUI.display">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">display</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">chat_area</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">state</span><span class="o">=</span><span class="s1">&#39;normal&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">chat_area</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="n">tk</span><span class="o">.</span><span class="n">END</span><span class="p">,</span> <span class="n">message</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">chat_area</span><span class="o">.</span><span class="n">configure</span><span class="p">(</span><span class="n">state</span><span class="o">=</span><span class="s1">&#39;disabled&#39;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">chat_area</span><span class="o">.</span><span class="n">see</span><span class="p">(</span><span class="n">tk</span><span class="o">.</span><span class="n">END</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ChatGUI.send">
+<a class="viewcode-back" href="../modules.html#client.ChatGUI.send">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">send</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">text</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">entry_field</span><span class="o">.</span><span class="n">get</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">text</span><span class="p">:</span>
+            <span class="n">send_message</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="p">,</span> <span class="n">text</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ChatGUI.clear_entry">
+<a class="viewcode-back" href="../modules.html#client.ChatGUI.clear_entry">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clear_entry</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">entry_field</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">tk</span><span class="o">.</span><span class="n">END</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ChatGUI.run">
+<a class="viewcode-back" href="../modules.html#client.ChatGUI.run">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">root</span><span class="o">.</span><span class="n">mainloop</span><span class="p">()</span></div>
+</div>
+
+
+<span class="c1"># === GUI Launch Function ===</span>
+<div class="viewcode-block" id="run_gui_mode">
+<a class="viewcode-back" href="../modules.html#client.run_gui_mode">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">run_gui_mode</span><span class="p">():</span>
+    <span class="k">global</span> <span class="n">aes_key</span><span class="p">,</span> <span class="n">username</span>
+    <span class="n">sock</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_DGRAM</span><span class="p">)</span>
+    <span class="n">private_key</span><span class="p">,</span> <span class="n">public_key</span> <span class="o">=</span> <span class="n">generate_rsa_keypair</span><span class="p">()</span>
+    <span class="n">sock</span><span class="o">.</span><span class="n">sendto</span><span class="p">(</span><span class="n">base64</span><span class="o">.</span><span class="n">b64encode</span><span class="p">(</span><span class="n">public_key</span><span class="p">),</span> <span class="n">server_addr</span><span class="p">)</span>
+
+    <span class="n">root</span> <span class="o">=</span> <span class="n">tk</span><span class="o">.</span><span class="n">Tk</span><span class="p">()</span>
+    <span class="n">root</span><span class="o">.</span><span class="n">withdraw</span><span class="p">()</span>
+    <span class="n">username_input</span> <span class="o">=</span> <span class="n">simpledialog</span><span class="o">.</span><span class="n">askstring</span><span class="p">(</span><span class="s2">&quot;Username&quot;</span><span class="p">,</span> <span class="s2">&quot;Enter your name:&quot;</span><span class="p">,</span> <span class="n">parent</span><span class="o">=</span><span class="n">root</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">username_input</span><span class="p">:</span>
+        <span class="n">messagebox</span><span class="o">.</span><span class="n">showerror</span><span class="p">(</span><span class="s2">&quot;Error&quot;</span><span class="p">,</span> <span class="s2">&quot;Username is required.&quot;</span><span class="p">)</span>
+        <span class="k">return</span>
+    <span class="n">username</span> <span class="o">=</span> <span class="n">username_input</span>
+
+    <span class="n">gui</span> <span class="o">=</span> <span class="n">ChatGUI</span><span class="p">(</span><span class="n">sock</span><span class="p">,</span> <span class="n">private_key</span><span class="p">)</span>
+    <span class="n">gui</span><span class="o">.</span><span class="n">display</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[System] Welcome, </span><span class="si">{</span><span class="n">username</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">gui</span><span class="o">.</span><span class="n">run</span><span class="p">()</span></div>
+
+
+<span class="c1"># === Terminal Mode (Fallback) ===</span>
+<div class="viewcode-block" id="run_terminal_mode">
+<a class="viewcode-back" href="../modules.html#client.run_terminal_mode">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">run_terminal_mode</span><span class="p">():</span>
+    <span class="k">global</span> <span class="n">aes_key</span><span class="p">,</span> <span class="n">username</span>
+    <span class="n">sock</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SOCK_DGRAM</span><span class="p">)</span>
+    <span class="n">private_key</span><span class="p">,</span> <span class="n">public_key</span> <span class="o">=</span> <span class="n">generate_rsa_keypair</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[System] RSA key generated.&quot;</span><span class="p">)</span>
+    <span class="n">sock</span><span class="o">.</span><span class="n">sendto</span><span class="p">(</span><span class="n">base64</span><span class="o">.</span><span class="n">b64encode</span><span class="p">(</span><span class="n">public_key</span><span class="p">),</span> <span class="n">server_addr</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[System] Public key sent to server.&quot;</span><span class="p">)</span>
+
+    <span class="n">username_input</span> <span class="o">=</span> <span class="nb">input</span><span class="p">(</span><span class="s2">&quot;Enter your name: &quot;</span><span class="p">)</span>
+    <span class="n">username</span> <span class="o">=</span> <span class="n">username_input</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;[System] Welcome, </span><span class="si">{</span><span class="n">username</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;[System] Waiting for AES key...&quot;</span><span class="p">)</span>
+
+    <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">receive_messages</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="n">sock</span><span class="p">,</span> <span class="n">private_key</span><span class="p">),</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+    <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">retransmit_thread</span><span class="p">,</span> <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="n">sock</span><span class="p">,),</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="nb">input</span><span class="p">(</span><span class="s2">&quot;→ &quot;</span><span class="p">)</span>
+        <span class="n">send_message</span><span class="p">(</span><span class="n">sock</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span></div>
+
+
+<span class="c1"># === Entry Point ===</span>
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="k">if</span> <span class="s2">&quot;--gui&quot;</span> <span class="ow">in</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">:</span>
+        <span class="n">run_gui_mode</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">run_terminal_mode</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">UDP Chat Application</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../modules.html">Modules</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, Kashmira.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>
